@@ -1,0 +1,4 @@
+python-pptx>=0.6.21
+PyYAML>=6.0
+lxml>=4.9
+Pillow>=9.0
