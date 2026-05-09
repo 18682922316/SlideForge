@@ -1,10 +1,11 @@
 # SlideForge
 
-> 一款用于快速「锻造」幻灯片的开源工具 —— Forge beautiful slides, effortlessly.
+> 面向科研与技术汇报的 PPT 生成 / 编辑 / 互转 Skills。
+> Agent Skills for forging research & technical slide decks.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-early--development-orange)](#项目状态)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#贡献指南)
+[![Skills](https://img.shields.io/badge/skills-4-brightgreen)](./skills)
+[![python-pptx](https://img.shields.io/badge/python--pptx-%E2%89%A50.6.21-blue)](https://python-pptx.readthedocs.io)
 
 [English](#english) · [简体中文](#简体中文)
 
@@ -12,143 +13,226 @@
 
 ## 简体中文
 
-### 项目简介
+SlideForge 是一组 [Agent Skills](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/overview) 风格的 PPT 工具集，专为科研与技术场景设计。每个 skill 由一个 `SKILL.md`（声明能力 + 调用说明）和一组 Python 脚本组成，可被 Claude / 其它 LLM Agent 直接调用，也可在命令行独立使用。
 
-**SlideForge** 是一个开源的幻灯片（演示文稿）创作工具，致力于让用户用最少的精力，做出兼具美感与表达力的演示稿。无论你想用 Markdown 写讲稿、用模板快速搭建商业汇报，还是借助 AI 一键生成全套 Slides，SlideForge 都希望成为你的"锻造炉"。
+### 包含的 Skills
 
-### 核心理念
+| Skill | 能力 | 入口脚本 |
+|------|------|----------|
+| [`generate-research-ppt`](./skills/generate-research-ppt/SKILL.md) | 给定大纲（Markdown / YAML），生成可编辑科研 PPT；支持文本、流程图、时序图、技术架构图、图片、表格；可继承参考模版 PPT 的布局/字体/风格 | `scripts/generate_research_ppt.py` |
+| [`edit-ppt`](./skills/edit-ppt/SKILL.md) | 对已有 PPT 应用结构化编辑：为文本框加 icon、按要求对齐/分布组件、替换/学术风润色文本、统一字体 | `scripts/edit_ppt.py` |
+| [`pptx-to-markdown`](./skills/pptx-to-markdown/SKILL.md) | 将 PPT 提取为 SlideForge 方言的 Markdown，含标题、布局、文本、表格、图片、备注 | `scripts/pptx_to_md.py` |
+| [`markdown-to-pptx`](./skills/markdown-to-pptx/SKILL.md) | 反向：把 Markdown 转为 PPT，可选用模版继承样式 | `scripts/md_to_pptx.py` |
 
-- **代码即幻灯片（Slides as Code）**：用 Markdown / 纯文本即可描述完整演示。
-- **模板驱动**：内置常用模板（汇报、产品介绍、技术分享、教学课件等），开箱即用。
-- **可扩展**：插件机制支持自定义主题、组件、动画与导出格式。
-- **多端导出**：一份源文件，导出 HTML / PDF / PPTX / 图片等多种格式。
+### 三大用户场景
 
-### 项目状态
-
-> 当前仓库处于 **早期初始化阶段**，尚未包含可运行的源码，欢迎参与共建。
-
-近期路线图：
-
-- [ ] 项目脚手架与开发环境搭建
-- [ ] Markdown → Slides 的核心解析与渲染
-- [ ] 默认主题（Light / Dark）
-- [ ] CLI 工具：`slideforge build` / `slideforge dev`
-- [ ] PDF / PPTX 导出
-- [ ] 模板市场与插件机制
-- [ ] AI 辅助生成（大纲、配图、文案润色）
+1. **科研技术 PPT 生成**：`generate-research-ppt`
+   - 输入：内容大纲（Markdown 或 YAML）+（可选）参考模版 PPT
+   - 输出：可在 PowerPoint / Keynote / WPS 中再编辑的 `.pptx`
+   - 内置块：文本段、多级 bullet、表格、图片、icon（通过 `edit-ppt` 二次插入）、Mermaid 流程图 / 时序图 / 架构图
+2. **PPT 编辑**：`edit-ppt`
+   - 给文本框旁加 icon（内置 8 个常用图标，亦支持任意 SVG/PNG 路径）
+   - 将多个组件按 left / right / top / bottom / center / 均匀分布对齐
+   - 用学术风润色文本（LLM 在对话中改写，再用 `replace_text` 落盘）
+   - 统一字体 / 字号 / 颜色
+3. **PPT 与 Markdown 互转**：`pptx-to-markdown` + `markdown-to-pptx`
+   - 任何已有 PPT → Markdown（图片自动导出到子目录）
+   - Markdown → PPT，配合 `--template` 可保留原 PPT 的布局与主题
 
 ### 快速开始
 
-> 以下命令为规划中的使用方式，待首个版本发布后可用。
-
 ```bash
-# 安装（规划中）
-npm install -g slideforge
+# 1. 安装依赖
+pip install -r requirements.txt
 
-# 新建一份演示
-slideforge new my-deck
+# 2. 生成一份科研 PPT（使用示例大纲）
+python3 scripts/generate_research_ppt.py examples/outline-demo.md \
+    -o demo.pptx
+#   或基于 YAML 大纲
+python3 scripts/generate_research_ppt.py examples/outline-demo.yaml \
+    -o demo.pptx
 
-# 本地预览（带热更新）
-cd my-deck && slideforge dev
+# 3. 用模版风格重做一份（继承字体/布局）
+python3 scripts/generate_research_ppt.py examples/outline-demo.md \
+    -t path/to/your_template.pptx -o demo-styled.pptx
 
-# 构建产物
-slideforge build --format pdf
+# 4. 把已有 PPT 转成 Markdown
+python3 scripts/pptx_to_md.py demo.pptx -o demo.md
+
+# 5. 应用一组结构化编辑
+python3 scripts/edit_ppt.py demo.pptx \
+    --spec examples/edit-spec-demo.yaml -o demo.edited.pptx
 ```
 
-最简幻灯片源文件示例：
+> **关于流程图 / 时序图 / 架构图**：脚本通过 `mermaid-cli` 渲染。如果系统已装 Node.js，首次运行会自动通过 `npx -y @mermaid-js/mermaid-cli` 拉取并缓存；如未安装，则插入占位图并打印警告，不会中断生成。
+
+### Markdown 方言示例
 
 ```markdown
 ---
-title: Hello SlideForge
-theme: default
+title: "Efficient Sparse Attention for Long-Context LLMs"
+subtitle: "Author · 2026"
+template: "templates/lab.pptx"      # 可选
+theme:
+  primary_color: "#1F4E79"
+  font: "Source Han Sans CN"
 ---
 
-# 第一页
+## Background
+<!-- layout: standard -->
 
-欢迎使用 SlideForge ✨
+- 长上下文场景对注意力机制提出新挑战
+- 全注意力复杂度 O(n²)，显存压力显著
 
 ---
 
-# 第二页
+## Architecture
+<!-- layout: image -->
 
-- 用 Markdown 写
-- 用浏览器看
-- 一键导出 PDF / PPTX
+\`\`\`mermaid
+flowchart LR
+  Q[Query] --> R[Router] --> A[Sparse Attention] --> O[Output]
+\`\`\`
+
+---
+
+## Results
+
+| Method | Acc ↑ | Latency (ms) ↓ |
+|--------|-------|----------------|
+| Baseline | 0.81 | 612 |
+| **Ours** | **0.88** | **187** |
 ```
+
+完整示例见 [`examples/outline-demo.md`](./examples/outline-demo.md)。
+
+### 编辑规范（edit-spec）示例
+
+```yaml
+operations:
+  - op: replace_text
+    slide: 1
+    target: "title"
+    text: "DRSA：面向长上下文 LLM 的高效稀疏注意力"
+
+  - op: add_icon
+    slide: 2
+    target: "title"
+    icon: "lightbulb"
+    position: left
+    size: 0.45
+
+  - op: align
+    slide: 2
+    target: "title"
+    align: center_h
+    reference: slide
+
+  - op: set_font
+    slide: 2
+    target: "all"
+    font: "Source Han Sans CN"
+    size: 18
+```
+
+完整字段参考 [`skills/edit-ppt/SKILL.md`](./skills/edit-ppt/SKILL.md)。
 
 ### 目录结构
 
 ```text
 SlideForge/
-├── LICENSE        # Apache 2.0 协议
-└── README.md      # 项目说明（即本文件）
+├── skills/
+│   ├── generate-research-ppt/SKILL.md
+│   ├── edit-ppt/SKILL.md
+│   ├── pptx-to-markdown/SKILL.md
+│   └── markdown-to-pptx/SKILL.md
+├── scripts/
+│   ├── generate_research_ppt.py
+│   ├── edit_ppt.py
+│   ├── md_to_pptx.py
+│   ├── pptx_to_md.py
+│   └── slideforge/                # 内部 Python 包
+│       ├── md_parser.py
+│       ├── pptx_builder.py
+│       ├── pptx_reader.py
+│       ├── template_style.py
+│       ├── editor.py
+│       ├── diagrams.py
+│       └── icons.py
+├── examples/
+│   ├── outline-demo.md
+│   ├── outline-demo.yaml
+│   └── edit-spec-demo.yaml
+├── assets/icons/                  # 内置 SVG 图标
+├── tests/
+├── requirements.txt
+└── LICENSE
 ```
 
-> 后续模块（如 `packages/core`、`packages/cli`、`themes/`、`docs/`、`examples/` 等）将在功能落地时陆续加入。
+### 设计原则
 
-### 贡献指南
+- **Skills as code**：每个能力都是「`SKILL.md` + 可执行脚本」的双重表达；`SKILL.md` 写给 LLM Agent 看，脚本写给机器执行。
+- **模版优先**：所有生成任务都鼓励使用现成模版作为 base，把复杂的样式问题交给 PowerPoint 的 master/layout/theme 去解决。
+- **LLM 负责语义、脚本负责机械操作**：例如「学术风润色」由 LLM 在对话中完成，脚本只做 `replace_text`；「选 Top-k 关键 token 加 icon」由 LLM 决定加哪些，脚本只做 `add_icon`。
+- **Markdown 是中间表达**：所有能力围绕一个统一的 Markdown 方言协作，便于 LLM 阅读、生成和组合。
 
-我们欢迎任何形式的贡献，包括但不限于：
+### 路线图
 
-- 提交 Issue 反馈 Bug 或讨论新特性
-- 提交 Pull Request 修复问题或实现功能
-- 完善文档、提供示例与模板
-- 翻译与本地化
+- [x] Markdown / YAML → PPT（含 mermaid 渲染）
+- [x] PPT → Markdown（含图片导出）
+- [x] PPT 编辑：replace_text / add_icon / align / set_font
+- [ ] 原生图表（Excel-style chart）支持
+- [ ] 时序图 / PlantUML 直接渲染
+- [ ] 模版抽取：从一份 PPT 中提取可复用的「空模版」
+- [ ] LaTeX 数学公式渲染
+- [ ] 更多内置 icon（lucide / tabler 全集，按需下载）
 
-参与流程：
+### 许可
 
-1. Fork 本仓库
-2. 创建特性分支：`git checkout -b feature/your-feature`
-3. 提交变更：`git commit -m "feat: add your feature"`
-4. 推送分支：`git push origin feature/your-feature`
-5. 发起 Pull Request
-
-### 许可协议
-
-本项目基于 [Apache License 2.0](./LICENSE) 开源，可自由用于商业与非商业用途。
+Apache License 2.0，详见 [LICENSE](./LICENSE)。
 
 ---
 
 ## English
 
-### Overview
+**SlideForge** is a set of [Agent Skills](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/overview) for forging research / technical slide decks. Each skill ships as a `SKILL.md` plus a small set of Python scripts, and can be invoked by Claude (or any LLM agent) or used standalone from the CLI.
 
-**SlideForge** is an open-source presentation authoring tool that helps you forge beautiful slides with minimal effort. Whether you want to write decks in Markdown, scaffold a business report from a template, or generate slides with AI assistance, SlideForge aims to be your forge.
+### Skills
 
-### Key Ideas
+| Skill | What it does |
+|-------|--------------|
+| [`generate-research-ppt`](./skills/generate-research-ppt/SKILL.md) | Build an editable PPTX from a markdown / YAML outline; supports text, bullets, tables, images, icons, and Mermaid flowchart / sequence / architecture diagrams; inherits style (layouts, fonts, theme) from a reference template. |
+| [`edit-ppt`](./skills/edit-ppt/SKILL.md) | Apply structured edits: add icons next to text frames, align/distribute shapes, polish text in academic style, unify fonts. |
+| [`pptx-to-markdown`](./skills/pptx-to-markdown/SKILL.md) | Extract a deck's content into a SlideForge-flavored markdown document. |
+| [`markdown-to-pptx`](./skills/markdown-to-pptx/SKILL.md) | The inverse — build a PPTX from markdown, optionally using a template for style. |
 
-- **Slides as Code** — describe an entire deck in Markdown / plain text.
-- **Template-driven** — built-in templates for reports, product intros, tech talks, and lectures.
-- **Extensible** — plugin system for custom themes, components, animations and exporters.
-- **Multi-format export** — one source, exported to HTML / PDF / PPTX / images.
-
-### Project Status
-
-This repository is in an **early bootstrap phase** — no runnable source code yet. Contributions are welcome.
-
-Roadmap highlights:
-
-- [ ] Project scaffolding and dev environment
-- [ ] Markdown → Slides parser and renderer
-- [ ] Default Light / Dark themes
-- [ ] CLI: `slideforge build` / `slideforge dev`
-- [ ] PDF / PPTX export
-- [ ] Template marketplace and plugin system
-- [ ] AI-assisted authoring (outline, images, copy polish)
-
-### Getting Started (Planned)
+### Quickstart
 
 ```bash
-npm install -g slideforge
-slideforge new my-deck
-cd my-deck && slideforge dev
-slideforge build --format pdf
+pip install -r requirements.txt
+
+# Generate a research PPT from an outline
+python3 scripts/generate_research_ppt.py examples/outline-demo.md -o demo.pptx
+
+# With template style inheritance
+python3 scripts/generate_research_ppt.py examples/outline-demo.md \
+    -t path/to/template.pptx -o demo.pptx
+
+# Convert a deck to markdown
+python3 scripts/pptx_to_md.py demo.pptx -o demo.md
+
+# Apply structured edits
+python3 scripts/edit_ppt.py demo.pptx \
+    --spec examples/edit-spec-demo.yaml -o demo.edited.pptx
 ```
 
-### Contributing
+### Design principles
 
-Issues and pull requests are very welcome. Please fork the repo, create a feature branch, commit your changes, and open a PR.
+- **Skills as code.** Each capability is a `SKILL.md` (instructions for the LLM) + executable script (mechanical work).
+- **Template-first.** Style matching is handled by reusing PowerPoint's master/layout/theme, not by reinventing them.
+- **LLM does semantics, scripts do mechanics.** Polishing wording is an LLM job; the script just does deterministic `replace_text`. Choosing which icons to add is an LLM job; the script just does `add_icon`.
+- **Markdown as the lingua franca.** All skills cooperate around one markdown dialect.
 
 ### License
 
-Released under the [Apache License 2.0](./LICENSE).
+Apache License 2.0 — see [LICENSE](./LICENSE).
