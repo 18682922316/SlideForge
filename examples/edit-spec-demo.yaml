@@ -1,0 +1,36 @@
+# SlideForge edit spec demo
+#
+# Apply with:
+#   python3 scripts/edit_ppt.py input.pptx --spec examples/edit-spec-demo.yaml \
+#     -o output.pptx
+#
+# Slide indices are 1-based.
+
+operations:
+  # 1) Replace the cover title (academic-style polish).
+  - op: replace_text
+    slide: 1
+    target: "title"
+    text: "DRSA：面向长上下文 LLM 的高效稀疏注意力"
+
+  # 2) Add a lightbulb icon to the title of slide 2.
+  - op: add_icon
+    slide: 2
+    target: "title"
+    icon: "lightbulb"
+    position: left
+    size: 0.45
+
+  # 3) Center the title horizontally on slide 2 (relative to slide).
+  - op: align
+    slide: 2
+    target: "title"
+    align: center_h
+    reference: slide
+
+  # 4) Apply a unified Chinese font to all text on slide 2.
+  - op: set_font
+    slide: 2
+    target: "all"
+    font: "Source Han Sans CN"
+    size: 18
