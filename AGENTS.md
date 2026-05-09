@@ -10,8 +10,21 @@ SlideForge is a Python CLI/library toolkit for generating, editing, and converti
 
 - **Python 3.9+** is required. Dependencies: `pip install -r requirements.txt`
 - **pytest** is needed for testing but is not listed in `requirements.txt`; install with `pip install pytest`
+- **cairosvg** provides high-fidelity SVG-to-PNG icon conversion; install with `pip install cairosvg`
 - **ruff** can be used for linting: `pip install ruff && ruff check .`
 - The codebase has no `pyproject.toml` or `setup.py`; scripts use `sys.path.insert` to locate the `slideforge` package
+
+### Mermaid diagram rendering
+
+Mermaid diagrams are rendered by `mmdc` (mermaid-cli). The update script installs it globally via `npm install -g @mermaid-js/mermaid-cli`.
+
+In the Cloud Agent VM, mermaid-cli needs a puppeteer config at `~/.puppeteer.json` to find Chrome and run with `--no-sandbox`:
+
+```json
+{"launchOptions":{"args":["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"],"executablePath":"/opt/google/chrome/chrome"}}
+```
+
+The update script creates this file automatically. The env var `PUPPETEER_EXECUTABLE_PATH=/opt/google/chrome/chrome` is also set in `~/.bashrc` as a fallback.
 
 ### Running tests
 
@@ -43,7 +56,6 @@ There is no project-level linter config; ruff runs with defaults. Existing code 
 ### Gotchas
 
 - The actual source code is on the `cursor/add-ppt-skills-162a` feature branch; `main` only has `README.md` and `LICENSE`.
-- Mermaid diagram rendering is optional and requires Node.js + `@mermaid-js/mermaid-cli`. Without it, placeholder PNGs are inserted instead — tests and CLI scripts still pass.
-- `cairosvg` is optional for SVG icon rasterization; the code falls back to text labels without it.
-- The `summary` layout warning (`layout 'summary' not found; using fallback`) is expected behavior.
+- The `summary` layout warning (`layout 'summary' not found; using fallback`) is expected behavior when using the demo outline.
 - `$HOME/.local/bin` must be on `PATH` for user-installed `pytest`/`ruff` binaries to be found.
+- System packages `fonts-noto-cjk`, `libcairo2-dev`, and Chrome-related libs (`libnss3`, `libgbm1`, etc.) must be installed for mermaid and cairosvg to work. The update script handles this.
