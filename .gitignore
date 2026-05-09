@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Test / build artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# SlideForge runtime
+.cache/
+_diagrams/
+*.edited.pptx
+*-img/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
