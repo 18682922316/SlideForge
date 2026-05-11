@@ -14,16 +14,16 @@ from __future__ import annotations
 
 import logging
 import os
-from copy import deepcopy
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List, Optional, Tuple
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.shapes import MSO_SHAPE, PP_PLACEHOLDER_TYPE
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Emu, Inches, Pt
 
 from . import diagrams as _diagrams
+from . import flowchart_native as _flow_native
 from .md_parser import (
     BulletItem,
     BulletList,
@@ -111,7 +111,8 @@ def _add_slide(prs, ir: Slide, img_dir: str,
         slide.notes_slide.notes_text_frame.text = ir.notes
 
     # Body content
-    body_ph = _find_body_placeholder(slide)
+    body_phs = _body_text_placeholders(slide)
+    picture_ph = _find_picture_placeholder(slide)
     text_blocks: List[Any] = []
     visual_blocks: List[Any] = []
     for blk in ir.blocks:
@@ -120,32 +121,140 @@ def _add_slide(prs, ir: Slide, img_dir: str,
         else:
             visual_blocks.append(blk)
 
-    # 1) Render text into the body placeholder if available
-    if text_blocks and body_ph is not None and body_ph.has_text_frame:
-        _render_text_into(body_ph.text_frame, text_blocks, font=body_font)
-        text_blocks = []  # consumed
-    elif text_blocks:
-        # No body placeholder; create a textbox covering left half
-        sw = prs.slide_width
-        sh = prs.slide_height
-        tb = slide.shapes.add_textbox(Inches(0.6), Inches(1.6), sw - Inches(1.2), sh - Inches(2.0))
-        _render_text_into(tb.text_frame, text_blocks, font=body_font)
-        text_blocks = []
+    orig_had_text = bool(text_blocks)
 
-    # 2) Visual blocks (images, tables, diagrams) laid out below or on right
+    # Picture layouts: first diagram / image uses the picture placeholder
+    if picture_ph is not None and visual_blocks:
+        first = visual_blocks[0]
+        if isinstance(first, (DiagramBlock, ImageBlock)) and _fill_picture_placeholder(
+            slide, picture_ph, first, img_dir=img_dir, font_name=body_font
+        ):
+            visual_blocks = visual_blocks[1:]
+
+    # Two-column layouts: text in the first content placeholder, visuals in the second
+    if len(body_phs) >= 2 and text_blocks and visual_blocks:
+        _render_text_into(body_phs[0].text_frame, text_blocks, font=body_font)
+        text_blocks = []
+        _clear_placeholder_text(body_phs[1])
+        _layout_visual_blocks_in_rect(
+            slide, prs, visual_blocks, _placeholder_bbox(body_phs[1]),
+            img_dir=img_dir, font_name=body_font,
+        )
+        visual_blocks = []
+
+    # Visual-only slides: fit content into the main body placeholder (not picture layouts)
+    elif (
+        visual_blocks
+        and not text_blocks
+        and len(body_phs) == 1
+        and picture_ph is None
+    ):
+        _clear_placeholder_text(body_phs[0])
+        _layout_visual_blocks_in_rect(
+            slide, prs, visual_blocks, _placeholder_bbox(body_phs[0]),
+            img_dir=img_dir, font_name=body_font,
+        )
+        visual_blocks = []
+
+    # Remaining text
+    if text_blocks:
+        if body_phs:
+            _render_text_into(body_phs[0].text_frame, text_blocks, font=body_font)
+            text_blocks = []
+        else:
+            sw = prs.slide_width
+            sh = prs.slide_height
+            tb = slide.shapes.add_textbox(Inches(0.6), Inches(1.6), sw - Inches(1.2), sh - Inches(2.0))
+            _render_text_into(tb.text_frame, text_blocks, font=body_font)
+            text_blocks = []
+
+    # Remaining visuals (heuristic placement)
     if visual_blocks:
-        _layout_visual_blocks(slide, prs, visual_blocks, img_dir=img_dir,
-                              has_text=bool(ir.has_bullets() or any(isinstance(b, Paragraph) for b in ir.blocks)))
+        _layout_visual_blocks(
+            slide, prs, visual_blocks, img_dir=img_dir, font_name=body_font,
+            has_text=orig_had_text,
+        )
 
 
 def _find_body_placeholder(slide):
     """Return the first non-title text placeholder, if any."""
+    phs = _body_text_placeholders(slide)
+    return phs[0] if phs else None
+
+
+def _body_text_placeholders(slide):
+    """Body / object placeholders that accept text, ordered by placeholder index."""
+    skip = {
+        PP_PLACEHOLDER_TYPE.TITLE,
+        PP_PLACEHOLDER_TYPE.CENTER_TITLE,
+        PP_PLACEHOLDER_TYPE.SUBTITLE,
+        PP_PLACEHOLDER_TYPE.DATE,
+        PP_PLACEHOLDER_TYPE.FOOTER,
+        PP_PLACEHOLDER_TYPE.SLIDE_NUMBER,
+    }
+    out: List[Any] = []
     for ph in slide.placeholders:
-        if ph.placeholder_format.idx == 0:
+        try:
+            pht = ph.placeholder_format.type
+        except Exception:
+            continue
+        if pht in skip:
             continue
         if ph.has_text_frame:
-            return ph
+            out.append(ph)
+    out.sort(key=lambda p: p.placeholder_format.idx)
+    return out
+
+
+def _find_picture_placeholder(slide):
+    for ph in slide.placeholders:
+        try:
+            if ph.placeholder_format.type == PP_PLACEHOLDER_TYPE.PICTURE:
+                return ph
+        except Exception:
+            continue
     return None
+
+
+def _placeholder_bbox(ph) -> Tuple[int, int, int, int]:
+    return int(ph.left), int(ph.top), int(ph.width), int(ph.height)
+
+
+def _clear_placeholder_text(ph) -> None:
+    if ph.has_text_frame:
+        ph.text_frame.clear()
+        p = ph.text_frame.paragraphs[0]
+        p.text = ""
+
+
+def _fill_picture_placeholder(slide, picture_ph, blk, *, img_dir: str, font_name: Optional[str]) -> bool:
+    """Raster via ``insert_picture``, or draw an editable native flowchart."""
+    left, top, w, h = _placeholder_bbox(picture_ph)
+    if isinstance(blk, DiagramBlock):
+        lang = (blk.language or "").lower()
+        if lang in ("mermaid", "mmd"):
+            if _flow_native.try_draw_mermaid_flowchart(
+                slide, blk.code, left, top, w, h, font_name=font_name
+            ):
+                if blk.caption:
+                    _add_caption(slide, left, top + h + Emu(50000), w, Inches(0.3), blk.caption)
+                return True
+        png_path = _diagrams.render_mermaid(blk.code, img_dir)
+        if not png_path:
+            png_path = _diagrams.make_placeholder_png(img_dir, label=blk.language or "diagram")
+        picture_ph.insert_picture(png_path)
+        if blk.caption:
+            _add_caption(slide, left, top + h + Emu(50000), w, Inches(0.3), blk.caption)
+        return True
+    if isinstance(blk, ImageBlock):
+        if not os.path.exists(blk.path):
+            log.warning("image not found: %s", blk.path)
+            return False
+        picture_ph.insert_picture(blk.path)
+        if blk.alt:
+            _add_caption(slide, left, top + h + Emu(50000), w, Inches(0.3), blk.alt)
+        return True
+    return False
 
 
 def _render_text_into(tf, blocks: Iterable[Any], font: Optional[str] = None):
@@ -182,7 +291,34 @@ def _flatten_bullets(items: List[BulletItem]) -> Iterable[BulletItem]:
 # ---------------------------------------------------------------------------
 
 
-def _layout_visual_blocks(slide, prs, blocks: List[Any], img_dir: str, has_text: bool):
+def _layout_visual_blocks_in_rect(
+    slide, prs, blocks: List[Any], bbox: Tuple[int, int, int, int],
+    *, img_dir: str, font_name: Optional[str],
+):
+    """Tile visuals inside a fixed rectangle (EMU), e.g. a content placeholder."""
+    x, y, avail_w, avail_h = bbox
+    n = len(blocks)
+    block_h = max(int(Emu(Inches(0.6))), avail_h // max(1, n))
+    cur_y = y
+    for blk in blocks:
+        try:
+            if isinstance(blk, ImageBlock):
+                _add_image_block(slide, blk, x, cur_y, avail_w, block_h)
+            elif isinstance(blk, TableBlock):
+                _add_table_block(slide, blk, x, cur_y, avail_w, block_h)
+            elif isinstance(blk, DiagramBlock):
+                _add_diagram_block(
+                    slide, blk, x, cur_y, avail_w, block_h, img_dir=img_dir, font_name=font_name,
+                )
+        except Exception as exc:
+            log.warning("failed to place %s: %s", type(blk).__name__, exc)
+        cur_y += block_h
+
+
+def _layout_visual_blocks(
+    slide, prs, blocks: List[Any], img_dir: str, has_text: bool,
+    font_name: Optional[str] = None,
+):
     """Place tables / images / diagrams. Simple heuristic layout.
 
     * has_text=True   -> visuals occupy the right half of the slide
@@ -212,7 +348,9 @@ def _layout_visual_blocks(slide, prs, blocks: List[Any], img_dir: str, has_text:
             elif isinstance(blk, TableBlock):
                 _add_table_block(slide, blk, x, cur_y, avail_w, block_h)
             elif isinstance(blk, DiagramBlock):
-                _add_diagram_block(slide, blk, x, cur_y, avail_w, block_h, img_dir=img_dir)
+                _add_diagram_block(
+                    slide, blk, x, cur_y, avail_w, block_h, img_dir=img_dir, font_name=font_name,
+                )
         except Exception as exc:
             log.warning("failed to place %s: %s", type(blk).__name__, exc)
         cur_y += block_h
@@ -232,9 +370,18 @@ def _add_image_block(slide, blk: ImageBlock, x, y, w, h):
         _add_caption(slide, x, y + pic.height + Emu(50000), w, Inches(0.3), blk.alt)
 
 
-def _add_diagram_block(slide, blk: DiagramBlock, x, y, w, h, img_dir: str):
-    png_path = None
+def _add_diagram_block(
+    slide, blk: DiagramBlock, x, y, w, h, img_dir: str, font_name: Optional[str] = None,
+):
     lang = (blk.language or "").lower()
+    if lang in ("mermaid", "mmd"):
+        if _flow_native.try_draw_mermaid_flowchart(
+            slide, blk.code, int(x), int(y), int(w), int(h), font_name=font_name,
+        ):
+            if blk.caption:
+                _add_caption(slide, x, y + h + Emu(50000), w, Inches(0.3), blk.caption)
+            return
+    png_path = None
     if lang in ("mermaid", "mmd"):
         png_path = _diagrams.render_mermaid(blk.code, img_dir)
     if not png_path:

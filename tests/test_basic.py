@@ -19,9 +19,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from slideforge.editor import apply_edits  # noqa: E402
+from slideforge.flowchart_native import parse_simple_flowchart, try_draw_mermaid_flowchart  # noqa: E402
 from slideforge.md_parser import parse_markdown  # noqa: E402
 from slideforge.pptx_builder import build_pptx  # noqa: E402
 from slideforge.pptx_reader import pptx_to_markdown  # noqa: E402
+from pptx import Presentation  # noqa: E402
+from pptx.util import Inches  # noqa: E402
 
 
 SIMPLE_MD = """\
@@ -46,6 +49,26 @@ subtitle: "by SlideForge"
 | Base   | 0.8 |
 | Ours   | 0.9 |
 """
+
+
+def test_native_flowchart_draws_shapes():
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+    code = "flowchart LR\n  A[Hello] --> B[World]\n"
+    ok = try_draw_mermaid_flowchart(
+        slide,
+        code,
+        int(Inches(0.5)),
+        int(Inches(0.5)),
+        int(prs.slide_width - Inches(1)),
+        int(prs.slide_height - Inches(1)),
+    )
+    assert ok
+    assert len(slide.shapes) >= 3
+
+
+def test_parse_flowchart_rejects_subgraph():
+    assert parse_simple_flowchart("flowchart LR\nsubgraph x\n  A-->B\nend") is None
 
 
 def test_parse_markdown():
